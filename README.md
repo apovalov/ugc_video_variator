@@ -38,6 +38,15 @@ cp env.example .env
 
 Set `GEMINI_API_KEY`, `KLING_ACCESS_KEY`, and `KLING_SECRET_KEY`. Optionally tweak `CREATIVE_VARIANTS_LOG_LEVEL` to override the default INFO logging level.
 
+Additional Kling knobs:
+
+- `KLING_EXTEND_ENABLED=1` turns on extend mode so the backend stitches clips beyond the base 10s window.
+- `KLING_EXTEND_PATH` overrides the extend endpoint (default `/v1/videos/video-extend`), supporting aggregator gateways.
+- `KLING_MODEL_NAME`, `KLING_ASPECT`, `KLING_MODE`, and `KLING_MAX_DURATION` refine the request payload.
+- `KLING_EXTEND_STEP` (seconds) caps each extend call; otherwise the remaining duration is requested in one shot.
+- `KLING_EXTEND_USE_URL=1` switches the extend payload to use `init_video_url` instead of `task_id`.
+- `KLING_EXTERNAL_TASK_ID_PREFIX` seeds deterministic `external_task_id` values for idempotent retries.
+
 Export them into your shell (for example via `source .env`) before running the CLI.
 
 ## Usage
@@ -63,7 +72,10 @@ Outputs are written as `out/01_business_casual.mp4` ... `out/05_seasonal.mp4` pl
 ### Kling
 
 Kling authentication derives a short-lived JWT using the provided access/secret keys; every API call sends it via `Authorization: Bearer <token>`.
-Endpoints in `src/backends/kling.py` are placeholders (`ENDPOINT_TODO`). Replace `BASE_URL`, `CREATE_JOB_PATH`, and `JOB_STATUS_PATH` with the official Kling API routes. The wrapper expects standard create/poll/download semantics with bearer authentication.
+
+The backend generates an initial clip (10s max) and, when `KLING_EXTEND_ENABLED=1`, issues one or more extend jobs until the original duration is reached. Extend requests reuse the provider `video_id` alongside the latest `task_id`, can optionally continue from an `init_video_url`, and respect deterministic `external_task_id` prefixes for idempotent retries. When the provider only returns incremental segments, the pipeline downloads them and performs an ffmpeg crossfade (`xfade`/`acrossfade`) before the normal property harmonisation and OpenCV text overlay.
+
+All endpoints can be overridden via environment variables so the same code works against Kling’s public API or aggregator proxies.
 
 ## Text Compositing
 
@@ -152,7 +164,7 @@ Used automatically when full video upload is unavailable (e.g. missing credentia
 
 ## Next Steps
 
-- Fill in Kling endpoint details and payload schema updates when they change.
-- Harden API error handling with exponential backoff.
+- Surface extend-mode telemetry (segments stitched, retries) in the variant report.
+- Expose crossfade configuration so operators can tune durations per provider.
 - Improve overlay detection with dedicated OCR when Gemini is unavailable.
 - Track cost/latency per variant in the report.
